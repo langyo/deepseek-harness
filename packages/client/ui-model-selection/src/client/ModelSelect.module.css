@@ -65,6 +65,21 @@
   transform: rotate(180deg);
 }
 
+/* Narrow composer: cap the trigger much tighter and drop the effort value so
+   a long model name ellipsizes instead of pushing the context ring and the
+   stop button off the row. Same 460px cut and anonymous container as the
+   PermissionSelect collapse (the container is the composer row, InputBar
+   .row). */
+@container (max-width: 460px) {
+  .trigger {
+    max-width: min(140px, 38cqw);
+  }
+
+  .triggerEffort {
+    display: none;
+  }
+}
+
 .menu {
   position: absolute;
   right: 0;

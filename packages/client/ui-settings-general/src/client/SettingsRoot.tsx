@@ -14,7 +14,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
-  IconPersonalizationOutline16, IconSettingsOutline16,
+  IconPanelLeftOutline16, IconPersonalizationOutline16, IconSettingsOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-contract.ts'
 import css from './SettingsRoot.module.css'
@@ -54,6 +54,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
     return () => { document.removeEventListener('keydown', onKeyDown) }
   }, [onClose])
 
+  // Mobile drawer: on narrow viewports the nav rail becomes an overlay
+  // drawer (see the 640px media block in the module css); this state only
+  // matters there and stays false — drawer closed — on desktop widths.
+  const [navOpen, setNavOpen] = useState(false)
+
   // Baseline focus management: entering the dialog lands on the close button.
   const closeButton = useRef<HTMLButtonElement | null>(null)
   useEffect(() => { closeButton.current?.focus() }, [])
@@ -61,7 +66,8 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
   return (
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className={clsx(css.panel, navOpen && css.navOpen)} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        {navOpen && <div className={css.navScrim} aria-hidden="true" onClick={() => { setNavOpen(false) }} />}
         <nav className={css.nav}>
           <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
           <div className={css.navList}>
@@ -71,7 +77,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
                 type="button"
                 className={clsx(css.navCell, row.id === active && css.active)}
                 aria-current={row.id === active ? 'true' : undefined}
-                onClick={() => { onSelect(row.id) }}
+                onClick={() => { onSelect(row.id); setNavOpen(false) }}
               >
                 {navIcon(row.id)}
                 <span className={css.navLabel}>{row.label}</span>
@@ -81,6 +87,10 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
         </nav>
         <div className={css.content}>
           <div className={css.header}>
+            <button type="button" className={css.navToggle} aria-expanded={navOpen} onClick={() => { setNavOpen(v => !v) }}>
+              <IconPanelLeftOutline16 size={16} />
+              <span className={css.hiddenLabel}>{renderSlot('settings.header', {})}</span>
+            </button>
             <div className={css.actions}>{renderSlot('settings.action', {})}</div>
             <button ref={closeButton} type="button" className={css.close} onClick={onClose}>
               <IconCloseOutline16 size={14} />
