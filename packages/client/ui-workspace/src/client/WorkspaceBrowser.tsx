@@ -15,6 +15,7 @@ import {
   Button, IconCloseFill14, IconPersonalizationOutline16,
   IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   SessionId, SessionListState, SessionSearchResultItem, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -23,7 +24,7 @@ import type { SessionNode, SessionOrderBy } from './tree.ts'
 import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './rows/Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from './stores.ts'
-import { WorkspacePickFlow } from './WorkspacePicker.tsx'
+import { SIDEBAR_ADD_FLOW_DRAFT_KEY, WorkspacePickFlow } from './WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
 
 /**
@@ -213,6 +214,34 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
   return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
 }
 
+/** Draft key for one Workspace's rename draft (kept until committed or cancelled). */
+const renameDraftKey = (workspaceId: WorkspaceId): string => `workspace.rename.${workspaceId as string}`
+
+/** Draft key for one Session's rename draft (kept until committed or cancelled). */
+const sessionRenameDraftKey = (sessionId: SessionId): string => `session.rename.${sessionId as string}`
+
+/**
+ * The sidebar body's confirmed no-workspace empty state: the quiet marker plus
+ * the add action with breathing room around both. Rendered instead of the
+ * no-session marker only once the workspace baseline settled empty — a pending
+ * or failed baseline proves nothing about emptiness.
+ * @param props.onAdd - raises the add-workspace flow; omitted while no picking flow is composed.
+ * @param props.t - locale seat.
+ * @returns the empty-state block.
+ */
+function WorkspaceEmptyBlock({ onAdd, t }: { onAdd?: (() => void) | undefined; t: WorkspaceBrowserProps['t'] }) {
+  return (
+    <div className={css.emptyWorkspaces}>
+      <span className={css.emptyMarker}>{t('empty.noWorkspaces')}</span>
+      {onAdd !== undefined && (
+        <Button variant="outline" size="sm" icon={<IconProjectAddOutline16 size={16} />} onClick={onAdd}>
+          {t('workspace.add')}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessions' | 'startSession' | 'open' | 'forkSession'
@@ -245,6 +274,10 @@ type SessionTreeProps = Pick<
   onSessionArchive: (sessionId: SessionNode['id']) => void
   /** Session order behavior: fixed after edits, or additionally promoted by user activity. */
   orderBy: SessionOrderBy
+  /** Confirmed workspace-baseline emptiness: the body shows the no-workspace state instead of the no-session one. */
+  noWorkspaces?: boolean | undefined
+  /** Raise the add-workspace flow; present only while a picking flow is composed. */
+  onAddWorkspace?: (() => void) | undefined
 }
 
 /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
@@ -254,6 +287,7 @@ function SessionTree({
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
+  noWorkspaces, onAddWorkspace,
 }: SessionTreeProps) {
   const list = useSessions(s => s)
   const current = list.current
@@ -390,9 +424,9 @@ function SessionTree({
         role="tree"
         aria-label={t('section.sessions')}
       >
-        {groups.length === 0 && (
-          <div className={css.empty}>{t('empty.none')}</div>
-        )}
+        {groups.length === 0 && (noWorkspaces === true
+          ? <WorkspaceEmptyBlock onAdd={onAddWorkspace} t={t} />
+          : <div className={css.empty}>{t('empty.none')}</div>)}
         {groups.map((group) => {
           const workspaceId = group.workspaceId
           const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
@@ -549,6 +583,7 @@ function SessionTree({
 function FlatList({
   useSessions, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
+  noWorkspaces, onAddWorkspace,
 }: Pick<
   SessionTreeProps,
   | 'useSessions'
@@ -563,6 +598,8 @@ function FlatList({
   | 'syncSessionOrderAccount'
   | 'setSessionOrder'
   | 't'
+  | 'noWorkspaces'
+  | 'onAddWorkspace'
 >) {
   const list = useSessions(s => s)
   const baseRows = useMemo(
@@ -620,9 +657,9 @@ function FlatList({
   return (
     <div className={clsx(css.treeBody, css.wide)}>
       <div className={clsx(css.list, css.flatList)} role="tree" aria-label={t('section.sessions')}>
-        {rows.length === 0 && (
-          <div className={css.empty}>{t('empty.none')}</div>
-        )}
+        {rows.length === 0 && (noWorkspaces === true
+          ? <WorkspaceEmptyBlock onAdd={onAddWorkspace} t={t} />
+          : <div className={css.empty}>{t('empty.none')}</div>)}
         {rows.map((node) => {
           const active = drag !== null
           return (
@@ -768,6 +805,10 @@ export function WorkspaceBrowser({
   const home = useHostDescription(description => description?.home)
   const workspaces = useWorkspaces(state => state.items)
   const workspacePhase = useWorkspaces(state => state.phase)
+  // Emptiness is only a fact once the baseline settled: a pending or failed
+  // list says nothing, and reading either as "no workspaces" is exactly the
+  // network-hiccup misread the empty states must never repeat.
+  const noWorkspaces = workspacePhase === 'ready' && workspaces.length === 0
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
@@ -902,6 +943,9 @@ export function WorkspaceBrowser({
   }, [normalizedQuery, searchSessions])
 
   // Rename dialog (browser-owned so it outlives row unmounts during collapse).
+  // The draft persists per target: a refresh or crash mid-edit restores the
+  // typed name the next time the same Workspace is renamed; committing or
+  // cancelling clears it.
   const [renameTarget, setRenameTarget] = useState<{ workspaceId: WorkspaceId; currentTitle: string } | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -911,8 +955,14 @@ export function WorkspaceBrowser({
     && workspaces.some(w => w.title === renameTrimmed)
   const renameBlocked = renaming || renameTrimmed === ''
     || renameTarget === null || renameTrimmed === renameTarget.currentTitle || renameDuplicate
+  useEffect(() => {
+    if (renameTarget === null) return
+    writeDialogDraft(renameDraftKey(renameTarget.workspaceId), renameDraft)
+  }, [renameTarget, renameDraft])
   const closeRename = () => {
     if (renaming) return
+    /* v8 ignore next -- the close path only runs with a target (the Modal is absent without one). */
+    if (renameTarget !== null) clearDialogDraft(renameDraftKey(renameTarget.workspaceId))
     setRenameTarget(null)
     setRenameError(null)
   }
@@ -922,6 +972,7 @@ export function WorkspaceBrowser({
     setRenameError(null)
     renameWorkspace(renameTarget.workspaceId, renameTrimmed).then(() => {
       setRenaming(false)
+      clearDialogDraft(renameDraftKey(renameTarget.workspaceId))
       setRenameTarget(null)
     }).catch((reason: unknown) => {
       setRenaming(false)
@@ -932,15 +983,22 @@ export function WorkspaceBrowser({
   // Session rename dialog (same browser-owned pattern as workspace rename;
   // sessions have no client-side name-conflict rule — the host normalizes).
   // Unlike workspace rename, an unchanged title is NOT blocked: confirming
-  // the current automatic title is the gesture that pins it.
+  // the current automatic title is the gesture that pins it. The draft
+  // persists per target exactly like the workspace one.
   const [sessionRenameTarget, setSessionRenameTarget] = useState<{ sessionId: SessionNode['id']; currentTitle: string } | null>(null)
   const [sessionRenameDraft, setSessionRenameDraft] = useState('')
   const [sessionRenaming, setSessionRenaming] = useState(false)
   const [sessionRenameError, setSessionRenameError] = useState<string | null>(null)
   const sessionRenameTrimmed = sessionRenameDraft.trim()
   const sessionRenameBlocked = sessionRenaming || sessionRenameTrimmed === '' || sessionRenameTarget === null
+  useEffect(() => {
+    if (sessionRenameTarget === null) return
+    writeDialogDraft(sessionRenameDraftKey(sessionRenameTarget.sessionId), sessionRenameDraft)
+  }, [sessionRenameTarget, sessionRenameDraft])
   const closeSessionRename = () => {
     if (sessionRenaming) return
+    /* v8 ignore next -- the close path only runs with a target (the Modal is absent without one). */
+    if (sessionRenameTarget !== null) clearDialogDraft(sessionRenameDraftKey(sessionRenameTarget.sessionId))
     setSessionRenameTarget(null)
     setSessionRenameError(null)
   }
@@ -950,6 +1008,7 @@ export function WorkspaceBrowser({
     setSessionRenameError(null)
     renameSession(sessionRenameTarget.sessionId, sessionRenameTrimmed).then(() => {
       setSessionRenaming(false)
+      clearDialogDraft(sessionRenameDraftKey(sessionRenameTarget.sessionId))
       setSessionRenameTarget(null)
     }).catch((reason: unknown) => {
       setSessionRenaming(false)
@@ -958,7 +1017,7 @@ export function WorkspaceBrowser({
   }
   const onSessionRename = (sessionId: SessionNode['id'], currentTitle: string) => {
     setSessionRenameTarget({ sessionId, currentTitle })
-    setSessionRenameDraft(currentTitle)
+    setSessionRenameDraft(readDialogDraft(sessionRenameDraftKey(sessionId), currentTitle))
     setSessionRenameError(null)
   }
 
@@ -1105,6 +1164,7 @@ export function WorkspaceBrowser({
         <WorkspacePickFlow
           t={t}
           open={wsPickerOpen}
+          draftKey={SIDEBAR_ADD_FLOW_DRAFT_KEY}
           anchorRef={wsPlusRef}
           useWorkspaces={useWorkspaces}
           createWorkspace={createWorkspace}
@@ -1165,6 +1225,8 @@ export function WorkspaceBrowser({
                 sessionUpdatedAtByAccount={sessionUpdatedAtByAccount}
                 syncSessionOrderAccount={actions.syncSessionOrderAccount}
                 setSessionOrder={actions.setSessionOrder}
+                noWorkspaces={noWorkspaces}
+                onAddWorkspace={directoryFlowAvailable ? () => { setWsPickerOpen(true) } : undefined}
                 t={t}
               />
             )
@@ -1189,9 +1251,11 @@ export function WorkspaceBrowser({
                 orderBy={orderBy}
                 home={home}
                 t={t}
+                noWorkspaces={noWorkspaces}
+                onAddWorkspace={directoryFlowAvailable ? () => { setWsPickerOpen(true) } : undefined}
                 onRenameRequest={(workspaceId, currentTitle) => {
                   setRenameTarget({ workspaceId, currentTitle })
-                  setRenameDraft(currentTitle)
+                  setRenameDraft(readDialogDraft(renameDraftKey(workspaceId), currentTitle))
                   setRenameError(null)
                 }}
                 onDeleteRequest={(workspaceId, title) => {

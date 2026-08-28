@@ -5,6 +5,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { WorkspaceBrowser } from '../src/client/WorkspaceBrowser.tsx'
+import { WorkspaceHeroEmpty } from '../src/client/WorkspaceHeroEmpty.tsx'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 
 async function bench() {
@@ -46,7 +47,11 @@ async function bench() {
   }
 }
 
-type HoleName = 'sidebar.workspaces' | 'conversation.hero.workspace' | 'conversation.empty.workspace'
+type HoleName =
+  | 'sidebar.workspaces'
+  | 'conversation.hero.workspace'
+  | 'conversation.hero.workspace.empty'
+  | 'conversation.empty.workspace'
 
 /** Declare any subset of the holes with a single root registration ('root' is a single slot). */
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
@@ -71,9 +76,10 @@ describe('ui-workspace apply', () => {
 
     const after = await bench()
     await after.ctx.plugin({ inject: [...inject], apply }).await()
-    declare(after.slots, 'conversation.hero.workspace', 'conversation.empty.workspace')
+    declare(after.slots, 'conversation.hero.workspace', 'conversation.hero.workspace.empty', 'conversation.empty.workspace')
     await Promise.resolve()
     expect(after.slots.entries('conversation.hero.workspace')[0]!.component).toBe(WorkspacePicker)
+    expect(after.slots.entries('conversation.hero.workspace.empty')[0]!.component).toBe(WorkspaceHeroEmpty)
     // expect(after.slots.entries('conversation.empty.workspace')[0]!.component).toBe(WorkspacePicker)
   })
 
@@ -158,12 +164,16 @@ describe('ui-workspace apply', () => {
 
   it('unregisters every entry on teardown', async () => {
     const b = await bench()
-    declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace', 'conversation.empty.workspace')
+    declare(
+      b.slots, 'sidebar.workspaces', 'conversation.hero.workspace',
+      'conversation.hero.workspace.empty', 'conversation.empty.workspace',
+    )
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     await fiber.dispose()
     expect(b.slots.entries('sidebar.workspaces')).toHaveLength(0)
     expect(b.slots.entries('conversation.hero.workspace')).toHaveLength(0)
+    expect(b.slots.entries('conversation.hero.workspace.empty')).toHaveLength(0)
     // expect(b.slots.entries('conversation.empty.workspace')).toHaveLength(0)
   })
 })

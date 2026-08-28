@@ -1749,4 +1749,36 @@ describe('DirectoryBrowser', () => {
     expect(columns()).toHaveLength(1)
     expect(b.listDirectory).toHaveBeenLastCalledWith(undefined, expect.any(AbortSignal))
   })
+
+  it('restores the persisted mid-interaction state at the open edge', async () => {
+    // A refresh or crash tore the dialog down mid-form; the restored draft
+    // reopens the listed level with the hidden toggle on and the open
+    // new-folder form carrying its typed name.
+    const b = mount({ restoreDraft: () => ({ path: HOME, showHidden: true, pathDraft: null, folderDraft: 'notes' }) })
+    await waitFor(() => { expect(screen.getByText('.config')).toBeTruthy() })
+    expect(b.listDirectory).toHaveBeenCalledWith(HOME, expect.any(AbortSignal))
+    expect(screen.getByLabelText<HTMLInputElement>('browser.folderName').value).toBe('notes')
+  })
+
+  it('restores an open path editor with its typed text', async () => {
+    mount({ restoreDraft: () => ({ path: HOME, pathDraft: `${HOME}/Doc` }) })
+    const input = await screen.findByLabelText('browser.editPath', { selector: 'input' })
+    expect((input as HTMLInputElement).value).toBe(`${HOME}/Doc`)
+  })
+
+  it('reports the restorable state outward on every change while open', async () => {
+    const onDraftChange = vi.fn()
+    mount({ onDraftChange })
+    // A fresh open reports no path before the first listing lands — the Host
+    // home directory is what a missing member already means.
+    expect(onDraftChange).toHaveBeenCalled()
+    expect(onDraftChange.mock.calls[0]![0]).not.toHaveProperty('path')
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenLastCalledWith({ path: HOME, pathDraft: null, showHidden: false, folderDraft: null })
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'browser.newFolder' }))
+    expect(onDraftChange).toHaveBeenLastCalledWith({ path: HOME, pathDraft: null, showHidden: false, folderDraft: '' })
+    fireEvent.change(screen.getByLabelText('browser.folderName'), { target: { value: 'zoo' } })
+    expect(onDraftChange).toHaveBeenLastCalledWith({ path: HOME, pathDraft: null, showHidden: false, folderDraft: 'zoo' })
+  })
 })

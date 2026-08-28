@@ -13,9 +13,12 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
+import type {
+  DirectoryPickingInjected, WorkspaceBrowserInjected, WorkspacePickerInjected,
+} from './contract/slots.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './WorkspaceBrowser.tsx'
+import { WorkspaceHeroEmpty } from './WorkspaceHeroEmpty.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
@@ -108,6 +111,11 @@ export function apply(ctx: ClientContext): void {
     createWorkspace: input => ctx.workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
+  // The empty state needs only the occupancy hook: its action forwards the
+  // add gesture to the owner, who routes it into the picker entry.
+  const emptyInjected = (): DirectoryPickingInjected => ({
+    hooks: { directoryFlow: pickerFlowSource },
+  })
   // Each registration declares its directory-flow child in the same call;
   // slot injection follows both the owner and declaration HMR lifetimes.
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
@@ -128,5 +136,13 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
     },
     WorkspacePicker,
+  ))
+  ctx.slots.inject('conversation.hero.workspace.empty', () => ctx.slots.register(
+    {
+      name: 'conversation.hero.workspace.empty',
+      inject: emptyInjected,
+      locale: NS,
+    },
+    WorkspaceHeroEmpty,
   ))
 }

@@ -1,0 +1,18 @@
+/* Confirmed no-workspace empty state in the new-session hero: one quiet
+   marker plus one primary action, centered in the composer stack with
+   generous clearance above and below so the state reads as a landing, not a
+   truncation. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 26px 0 10px;
+}
+
+.marker {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 18px;
+}

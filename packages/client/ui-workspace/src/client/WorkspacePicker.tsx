@@ -7,12 +7,19 @@
  * adopts the picked path, and owns the error surface. Adding a workspace has
  * exactly one route — pick a host directory, new or existing — because the
  * occupant's own create-folder affordance already covers creating one.
+ *
+ * Opening discipline: an empty workspace list NEVER opens the flow by itself.
+ * A pick gesture shows the menu (one add row when nothing is listed); only an
+ * explicit add gesture (`intent: 'add'`) raises the flow directly, plus the
+ * one restore path — a persisted open request a refresh or crash tore down
+ * mid-interaction (the stale-form reopen, `draftKey`).
  */
 import type { ReactNode, RefObject } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import {
   Button, IconFolderClose16, IconPlusOutline16, Menu, Modal, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceId, WorkspaceListState, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -22,12 +29,30 @@ import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
 
+/** Stale-form reopen draft key for the hero surface's directory flow. */
+const HERO_ADD_FLOW_DRAFT_KEY = 'workspace.addFlow.hero'
+/** Stale-form reopen draft key for the sidebar surface's directory flow. */
+export const SIDEBAR_ADD_FLOW_DRAFT_KEY = 'workspace.addFlow.sidebar'
+
 /** Core flow props: the owner supplies popover control and pick semantics. */
 export interface WorkspacePickFlowProps {
   /** The standard locale seat, forwarded by whichever slot entry hosts the flow. */
   t: WorkspacePickerProps['t']
   /** Popover visibility (anchor button toggle state, owner-local). */
   open: boolean
+  /**
+   * The anchor gesture's intent. `pick` (default) shows the menu; `add`
+   * consumes the open request straight into the directory flow — reserved for
+   * gestures whose label already says "add workspace". Defaults to `add` for
+   * `addOnly` surfaces (their anchor is an add button).
+   */
+  intent?: 'pick' | 'add' | undefined
+  /**
+   * Draft key persisting the flow's open request (the stale-form reopen).
+   * Refresh or crash while the flow is open remounts it open; every deliberate
+   * end (pick, cancel, error dismissal) clears the request.
+   */
+  draftKey?: string | undefined
   /** The anchor button element — the popover's placement anchor. */
   anchorRef?: RefObject<HTMLElement | null> | undefined
   /** Selector hook over the workspace list (framework standard hook). */
@@ -58,6 +83,8 @@ export interface WorkspacePickFlowProps {
 export function WorkspacePickFlow({
   t,
   open,
+  intent,
+  draftKey,
   anchorRef,
   useWorkspaces,
   createWorkspace,
@@ -77,7 +104,19 @@ export function WorkspacePickFlow({
   )
   const [errorOpen, setErrorOpen] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
-  const [flowOpen, setFlowOpen] = useState(false)
+  // The stale-form reopen: a draft left behind by a refresh or crash while
+  // the flow stood open remounts it open. Every deliberate close clears the
+  // draft through the effect below, so only an abrupt teardown keeps it.
+  const [flowOpen, setFlowOpen] = useState(
+    () => draftKey !== undefined && readDialogDraft<boolean>(draftKey, false),
+  )
+  // Mirror the open state into the draft: open writes the request, closed
+  // (pick, cancel, error — every end of the interaction) removes it.
+  useEffect(() => {
+    if (draftKey === undefined) return
+    if (flowOpen) writeDialogDraft(draftKey, true)
+    else clearDialogDraft(draftKey)
+  }, [draftKey, flowOpen])
   const [pickingFolder, setPickingFolder] = useState(false)
   // One picking interaction at a time: while the flow is open (native chooser
   // pending, browse dialog up) or its pick is being adopted, every other
@@ -140,21 +179,20 @@ export function WorkspacePickFlow({
     setFlowOpen(true)
   }, [onClose])
 
-  // A menu exists to disambiguate between targets. With no workspaces listed
-  // and the add action the only entry left, the anchor gesture IS that action:
-  // a one-row popover would cost a click and offer nothing to choose between.
-  // The owner's open request is consumed the same way selecting the entry
-  // would consume it (close the popover, raise the flow). An empty list is
-  // only final once the baseline lands — until then the menu stays up with its
-  // loading status instead of jumping into a flow the arriving list would have
-  // made unnecessary; the add-only surface lists nothing and never waits.
-  const listSettled = addOnly || workspaceSnapshot.phase === 'ready'
-  const addIsTheOnlyEntry = !pinAdd && listSettled && addEntries.length === 1
+  // An explicit add gesture raises the flow directly: the gesture's own
+  // surface already says "add workspace" (the empty state's button, the
+  // add-only sidebar header), so a one-row menu would restate the request and
+  // cost a click. It consumes the owner's open request the same way selecting
+  // the entry would (close the popover, raise the flow). Detection never
+  // raises: a pick gesture over any list state (pending, ready, empty) shows
+  // the menu below — its one add row when nothing is listed — so a list that
+  // is merely late or a baseline a network hiccup emptied cannot pop the flow.
+  const addGesture = open && (intent ?? (addOnly ? 'add' : 'pick')) === 'add'
   // `flowBusy` gates this exactly as it disables the equivalent menu entry: a
   // pick still being adopted owns the surface until it settles.
   useEffect(() => {
-    if (open && addIsTheOnlyEntry && !flowBusy) openDirectoryFlow()
-  }, [open, addIsTheOnlyEntry, flowBusy, openDirectoryFlow])
+    if (addGesture && flowAvailable && !flowBusy) openDirectoryFlow()
+  }, [addGesture, flowAvailable, flowBusy, openDirectoryFlow])
 
   /** Owner side of the flow conversation: adopt keeps the flow open (busy) until the Host answers. */
   const flowOwner: DirectoryFlowOwnerProps = {
@@ -183,7 +221,7 @@ export function WorkspacePickFlow({
   return (
     <>
       <Menu
-        open={open && !addIsTheOnlyEntry && !menuIsEmpty}
+        open={open && !addGesture && !menuIsEmpty}
         anchor={null}
         items={items}
         {...pinAdd ? { footer: addEntries } : {}}
@@ -194,7 +232,7 @@ export function WorkspacePickFlow({
         portal
         getAnchorRect={getAnchorRect}
       />
-      {open && !addIsTheOnlyEntry && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && <div className={css.menuStatus} role="status">{t('picker.loading')}</div>}
+      {open && !addGesture && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && <div className={css.menuStatus} role="status">{t('picker.loading')}</div>}
       {renderDirectoryFlow(flowOwner)}
       <Modal
         open={errorOpen}
@@ -224,6 +262,7 @@ export function WorkspacePickFlow({
  */
 export function WorkspacePicker({
   open,
+  intent,
   anchorRef,
   useWorkspaces,
   selectedId,
@@ -238,6 +277,8 @@ export function WorkspacePicker({
     <WorkspacePickFlow
       t={t}
       open={open}
+      intent={intent}
+      draftKey={HERO_ADD_FLOW_DRAFT_KEY}
       anchorRef={anchorRef}
       useWorkspaces={useWorkspaces}
       createWorkspace={createWorkspace}

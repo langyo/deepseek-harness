@@ -11,7 +11,10 @@ import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 import { zh } from '../src/client/locales.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
 
 // The seat's key domain is workspace ∪ common; the stub mirrors the real
 // lookup chain (namespace, then common vocabulary, then the key).
@@ -81,6 +84,7 @@ function mount(
   items: readonly WorkspaceView[] = [workspace('alpha', 'Alpha')],
   createWorkspace = vi.fn(),
   occupancy = occupancySource(),
+  options?: { intent?: 'pick' | 'add' },
 ) {
   const onPick = vi.fn()
   const onClose = vi.fn()
@@ -89,6 +93,7 @@ function mount(
   const renderPicker = (nextItems: readonly WorkspaceView[]) => (
     <WorkspacePicker
       open
+      {...options?.intent === undefined ? {} : { intent: options.intent }}
       anchorRef={anchorRef}
       useSessions={hook(sessions)}
       useWorkspaces={hook(workspaceState(nextItems))}
@@ -104,7 +109,7 @@ function mount(
     renderPicker(items),
   )
   return {
-    view, onPick, onClose, createWorkspace, probe, occupancy,
+    view, onPick, onClose, createWorkspace, probe, occupancy, renderSlot,
     rerenderItems: (nextItems: readonly WorkspaceView[]) => { view.rerender(renderPicker(nextItems)) },
   }
 }
@@ -137,14 +142,50 @@ describe('WorkspacePicker', () => {
     expect(screen.queryByTestId('directory-flow')).toBeNull()
   })
 
-  it('raises the flow straight from the anchor gesture when adding is the only entry', () => {
-    // Nothing to list and one action left: a one-row menu would offer no
-    // choice, so the owner's open request lands in the flow itself.
+  it('shows the one-row add menu for a pick gesture over an empty settled list', () => {
+    // Detection never raises the flow: with nothing to list, a pick gesture
+    // still shows the menu — its one add row — so a list that is merely late
+    // or emptied by a network hiccup cannot pop the picking interaction.
     const b = mount([])
+    expect(screen.getByRole('menu')).toBeTruthy()
+    const add = screen.getByRole('menuitem', { name: '添加工作区…' })
+    expect(b.onClose).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('directory-flow')).toBeNull()
+    // The one row is the flow's own entry: choosing it raises the flow.
+    fireEvent.click(add)
+    expect(b.onClose).toHaveBeenCalled()
+    expect(screen.getByTestId('directory-flow')).toBeTruthy()
+  })
+
+  it('raises the flow directly for an explicit add gesture', () => {
+    // An add-intent gesture (the empty state's labeled button) consumes the
+    // open request straight into the flow — no menu in between.
+    const b = mount([], vi.fn(), occupancySource(), { intent: 'add' })
     expect(screen.queryByRole('menu')).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
     expect(b.onClose).toHaveBeenCalled()
     expect(screen.getByTestId('directory-flow')).toBeTruthy()
+  })
+
+  it('reopens the flow once when a stale draft says a refresh tore it down', () => {
+    // The stale-form reopen: the persisted open request remounts the flow
+    // without any gesture; any deliberate end clears it again.
+    localStorage.setItem('dsh.draft.workspace.addFlow.hero', 'true')
+    const b = mount([workspace('alpha', 'Alpha')])
+    expect(screen.getByTestId('directory-flow')).toBeTruthy()
+    act(() => { b.probe.owner!.onCancel() })
+    expect(screen.queryByTestId('directory-flow')).toBeNull()
+    expect(localStorage.getItem('dsh.draft.workspace.addFlow.hero')).toBeNull()
+  })
+
+  it('keeps the flow-open draft cleared after a successful adoption', async () => {
+    localStorage.setItem('dsh.draft.workspace.addFlow.hero', 'true')
+    const created = { ...workspace('adopted'), path: '/tmp/project', title: 'project' }
+    const b = mount([workspace('alpha', 'Alpha')], vi.fn(async () => created))
+    expect(screen.getByTestId('directory-flow')).toBeTruthy()
+    await act(async () => { b.probe.owner!.onPicked('/tmp/project') })
+    await waitFor(() => { expect(b.onPick).toHaveBeenCalledWith(created.workspaceId) })
+    expect(localStorage.getItem('dsh.draft.workspace.addFlow.hero')).toBeNull()
   })
 
   it('treats flow cancellation as a silent no-op', () => {

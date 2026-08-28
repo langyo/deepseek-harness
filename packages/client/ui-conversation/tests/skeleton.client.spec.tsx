@@ -154,12 +154,14 @@ function mount(
   /** Owner share handed to the two composer tool-row seats, per render. */
   const seatOwners: { key: string; owner: unknown }[] = []
   let pickerOwner: unknown
+  let emptyOwner: unknown
   const renderSlot = ((key: string, owner: object, opts?: { only?: string; fallback?: ReactNode }) => {
     slotCalls.push(key)
     if (key === 'conversation.input.model' || key === 'conversation.input.plan') {
       seatOwners.push({ key, owner })
     }
     if (key === 'conversation.hero.workspace') { pickerOwner = owner; return null }
+    if (key === 'conversation.hero.workspace.empty') { emptyOwner = owner; return null }
     if (key === 'conversation.session.header.lineage') {
       lineageOwners.push(owner as ConversationHeaderLineageOwnerProps)
       return opts?.fallback ?? null
@@ -273,6 +275,7 @@ function mount(
   return {
     view, chat, sink, retargetWorkspace, session, slotCalls, lineageOwners, seatOwners, open,
     pickerOwner: () => pickerOwner,
+    emptyOwner: () => emptyOwner,
     rerender: () => { view.rerender(<ConversationRoot {...props} />) },
   }
 }
@@ -533,6 +536,19 @@ describe('ConversationRoot resident composer', () => {
     // The agent-preset chip sits in the same row, for the same reason: both
     // choices are only open before the first message.
     expect(b.slotCalls).toContain('conversation.hero.agentPreset')
+  })
+
+  it('routes the empty state add gesture and the chip through opposite picker intents', () => {
+    const b = mount(conversationSnapshot({ composerPhase: 'blank', blank: true }))
+    expect(b.slotCalls).toContain('conversation.hero.workspace.empty')
+    // The chip asks to pick: the menu opens even over an empty list.
+    fireEvent.click(b.view.getByRole('button', { name: '选择工作区' }))
+    expect(b.pickerOwner()).toMatchObject({ open: true, intent: 'pick' })
+    // The empty state's labeled button asks to add: the picker consumes the
+    // request straight into the add-workspace flow.
+    const owner = b.emptyOwner() as { requestAdd(): void }
+    act(() => { owner.requestAdd() })
+    expect(b.pickerOwner()).toMatchObject({ open: true, intent: 'add' })
   })
 
   it('prompt failure renders the promptError strip (ordinary failure, no transaction UI)', () => {

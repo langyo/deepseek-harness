@@ -750,11 +750,10 @@ describe('WorkspaceBrowser', () => {
     }
   })
 
-  it('shows the no-sessions empty state in both modes and resolves an empty search', async () => {
+  it('shows the no-sessions empty state in flat mode with workspaces listed and resolves an empty search', async () => {
     vi.useFakeTimers()
     try {
-      const b = mount()
-      expect(screen.getByText('暂无会话')).toBeTruthy()
+      const b = mount({ useWorkspaces: hook(workspaceState([workspace('alpha', [])])) })
       b.store.actions.setGroupBy('flat')
       rerender(b, {})
       expect(screen.getByText('暂无会话')).toBeTruthy()
@@ -765,6 +764,31 @@ describe('WorkspaceBrowser', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('shows the confirmed no-workspace empty state with its add action in both modes', () => {
+    // Zero workspaces on a SETTLED baseline: the body carries the no-workspace
+    // marker plus the add action instead of the no-session marker.
+    const b = mount()
+    expect(screen.getByText('暂无工作区')).toBeTruthy()
+    // The header's icon button carries the same label; the empty state's
+    // action is the second one in document order.
+    const addButtons = screen.getAllByRole('button', { name: '添加工作区' })
+    fireEvent.click(addButtons[addButtons.length - 1]!)
+    expect(screen.getByTestId('directory-flow')).toBeTruthy()
+    b.store.actions.setGroupBy('flat')
+    rerender(b, {})
+    expect(screen.getByText('暂无工作区')).toBeTruthy()
+    expect(screen.queryByText('暂无会话')).toBeNull()
+  })
+
+  it('keeps the no-session marker while the workspace baseline is unsettled', () => {
+    // A pending or failed list proves nothing about emptiness: the body never
+    // claims "no workspaces" off an unsettled baseline.
+    const pending: WorkspaceListState = { ...workspaceState([]), phase: 'pending', state: 'loading' }
+    mount({ useWorkspaces: hook(pending) })
+    expect(screen.getByText('暂无会话')).toBeTruthy()
+    expect(screen.queryByText('暂无工作区')).toBeNull()
   })
 
   it('rail state renders icon controls that request expansion', () => {

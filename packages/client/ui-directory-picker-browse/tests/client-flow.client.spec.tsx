@@ -221,6 +221,52 @@ describe('directory-picker-browse client half', () => {
     )
     expect(view.container.innerHTML).toBe('')
   })
+
+  it('persists the mid-interaction state and clears it on the confirmed pick', async () => {
+    localStorage.clear()
+    const onPicked = vi.fn()
+    const props = owner({ onPicked })
+    render(
+      <BrowseDirectoryFlow
+        {...props}
+        listDirectory={vi.fn(async (): Promise<DirectoryListing> => homeListing)}
+        createDirectory={vi.fn(async () => '')}
+        t={key => key}
+      />,
+    )
+    const openButton = screen.getByRole<HTMLButtonElement>('button', { name: 'browser.open' })
+    await waitFor(() => { expect(openButton.disabled).toBe(false) })
+    // The open dialog wrote its restorable state through the shared seam.
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem('dsh.draft.workspace.addFlow.browse')!)).toMatchObject({
+        path: HOME, pathDraft: null, showHidden: false, folderDraft: null,
+      })
+    })
+    fireEvent.click(openButton)
+    expect(onPicked).toHaveBeenCalledWith(HOME)
+    // The confirmed pick is a deliberate end: the draft goes with it.
+    expect(localStorage.getItem('dsh.draft.workspace.addFlow.browse')).toBeNull()
+  })
+
+  it('seeds a stale draft back into the reopened dialog', async () => {
+    localStorage.clear()
+    localStorage.setItem(
+      'dsh.draft.workspace.addFlow.browse',
+      JSON.stringify({ path: HOME, showHidden: true, pathDraft: null, folderDraft: null }),
+    )
+    const listDirectory = vi.fn(async (): Promise<DirectoryListing> => homeListing)
+    render(
+      <BrowseDirectoryFlow
+        {...owner()}
+        listDirectory={listDirectory}
+        createDirectory={vi.fn(async () => '')}
+        t={key => key}
+      />,
+    )
+    // The restored level is the one the stale draft names, not the Host home default.
+    await waitFor(() => { expect(listDirectory).toHaveBeenCalledWith(HOME, expect.any(AbortSignal)) })
+    expect(listDirectory).not.toHaveBeenCalledWith(undefined, expect.any(AbortSignal))
+  })
 })
 
 describe('directory-picker-browse node half', () => {

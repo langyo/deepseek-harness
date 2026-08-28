@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-07-31-one-route-to-add-a-workspace.md
-2026-07-31-one-route-to-add-a-workspace.md: bcbe77899d4050bd898b256e81f88183099bdebf
-2026-07-31-one-route-to-add-a-workspace.zh.md: edd17af03ca6454be321a4b267ff1761ece2d03f
+2026-07-31-one-route-to-add-a-workspace.md: 4f5c923293147c77417e4937a251104567310bd9
+2026-07-31-one-route-to-add-a-workspace.zh.md: 31f935d52bfe89243e99f8947549e460eb0dc0d8

@@ -28,7 +28,12 @@ export function ConversationRoot({
   // send; its reason is already localized by whoever raised it.
   const composerBlock = useComposerBlock(block => block)
 
+  // The picker's anchor intent: the chip and the composer trigger ask to
+  // PICK (a menu, even a one-row add menu over an empty list); only the
+  // empty state's labeled button asks to ADD, whose open request the picker
+  // consumes straight into the add-workspace flow.
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerIntent, setPickerIntent] = useState<'pick' | 'add'>('pick')
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
   const pickerAnchor = useRef<HTMLButtonElement>(null)
 
@@ -103,11 +108,15 @@ export function ConversationRoot({
         buttonRef={pickerAnchor}
         label={chipTitle}
         menuOpen={pickerOpen}
-        onClick={() => { setPickerOpen(open => !open) }}
+        onClick={() => {
+          setPickerIntent('pick')
+          setPickerOpen(open => !open)
+        }}
         t={t}
       />
       {renderSlot('conversation.hero.workspace', {
         open: pickerOpen,
+        intent: pickerIntent,
         anchorRef: pickerAnchor,
         selectedId: pendingWorkspaceId ?? sessionWorkspace?.workspaceId,
         onPick: (workspaceId) => {
@@ -140,7 +149,10 @@ export function ConversationRoot({
         disabled: true,
         placeholder: t('placeholder.workspace'),
         workspacePickerOpen: pickerOpen,
-        onRequestWorkspace: () => { setPickerOpen(true) },
+        onRequestWorkspace: () => {
+          setPickerIntent('pick')
+          setPickerOpen(true)
+        },
       }
       : blocked
         // `blocked`, not `disabled`: the bar refuses input either way, but a
@@ -160,6 +172,15 @@ export function ConversationRoot({
     <div className={clsx(css.composerStack, hero && css.composerHero)}>
       {hero && <HeroGlow className={css.heroGlow} />}
       {hero && <HeroShell t={t} renderSlot={renderSlot} />}
+      {/* Confirmed no-workspace marker + its explicit add action; the entry
+          renders nothing until the workspace baseline settles empty, so a
+          slow or failed list never reads as "no workspaces". */}
+      {hero && renderSlot('conversation.hero.workspace.empty', {
+        requestAdd: () => {
+          setPickerIntent('add')
+          setPickerOpen(true)
+        },
+      })}
       {hero && heroWorkspaceRow}
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
       {inputBar}

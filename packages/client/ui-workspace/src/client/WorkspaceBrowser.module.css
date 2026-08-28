@@ -454,6 +454,23 @@
   font-size: 13px;
 }
 
+/* Confirmed no-workspace state (sidebar body): marker plus add action with
+   clearance around both — the state is a landing with a way forward, not a
+   truncated list. */
+.emptyWorkspaces {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 16px 26px;
+}
+
+.emptyMarker {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
 /* Rename dialog form (same figma dialog family as the create modals). */
 .renameInput {
   box-sizing: border-box;

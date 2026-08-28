@@ -177,6 +177,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation.hero.workspace': { kind: 'single'; scope: 'root'; owner: EmptyWorkspaceOwnerProps }
     /**
+     * The hero's confirmed no-workspace empty state: a quiet marker plus an
+     * explicit "new workspace" action. Root scope like the picker hole beside
+     * it — the entry reads the global workspace list and only renders once
+     * the baseline settled empty.
+     */
+    'conversation.hero.workspace.empty': { kind: 'single'; scope: 'root'; owner: WorkspaceEmptyStateOwnerProps }
+    /**
      * Brand mark leading the blank-session headline. Declared by this
      * package's `conversation` entry; the shell supplies a fish fallback.
      */
@@ -645,6 +652,7 @@ export type ConversationSlotProps =
     | 'conversation.input.left' | 'conversation.input.right'
     | 'conversation.hero.brand.mark'
     | 'conversation.hero.workspace'
+    | 'conversation.hero.workspace.empty'
     | 'conversation.hero.agentPreset'
   >
   & InjectFace<ConversationInjected>
@@ -813,9 +821,26 @@ export type DetailsSlotProps = PropsRuntime<'details'> & PropsRenderSlots<'conve
 /** Owner share common to the hero / New-Session Workspace pickers. */
 export interface EmptyWorkspaceOwnerProps {
   open: boolean
+  /**
+   * The anchor gesture's intent: `pick` (default) shows the menu;
+   * `add` consumes the open request straight into the add-workspace flow —
+   * reserved for gestures whose label already says "add workspace", so an
+   * empty list observed by an ordinary pick can never pop the flow.
+   */
+  intent?: 'pick' | 'add' | undefined
   anchorRef?: RefObject<HTMLElement>
   /** Currently active workspace (renders a trailing check in the picker list). */
   selectedId?: WorkspaceId | undefined
   onPick: (workspaceId: WorkspaceId) => void
   onClose: () => void
+}
+
+/**
+ * Owner share of the hero's no-workspace empty state: the owner places the
+ * block; the entry decides whether the state holds (baseline settled empty)
+ * and routes the button's add gesture back through the owner.
+ */
+export interface WorkspaceEmptyStateOwnerProps {
+  /** The operator asked to add a workspace; the owner raises its picker with add intent. */
+  requestAdd: () => void
 }

@@ -53,6 +53,16 @@ export interface DirectoryBrowserProps {
   listDirectory: (path?: string, signal?: AbortSignal) => Promise<DirectoryListing>
   /** Create one child directory under an existing parent. */
   createDirectory: (path: string, name: string) => Promise<string>
+  /**
+   * Fresh source of the persisted mid-interaction state, invoked once at each
+   * open edge: the listed level, the path editor's live text, the hidden
+   * toggle, and an open new-folder form's draft. A refresh or crash mid-form
+   * therefore reopens exactly where it left off; absent/undefined members
+   * fall back to the fresh-open defaults.
+   */
+  restoreDraft?: (() => DirectoryBrowserDraft | undefined) | undefined
+  /** Report the current restorable state on every change while open (write-through persistence; the owner stores it). */
+  onDraftChange?: ((draft: DirectoryBrowserDraft) => void) | undefined
   /** The operator confirmed a directory (the selection, else the listed level). */
   onOpen: (path: string) => void
   /** Close without picking (mask, Escape, Cancel). */
@@ -61,6 +71,21 @@ export interface DirectoryBrowserProps {
   busy: boolean
   /** Localized copy. */
   t: Translate
+}
+
+/**
+ * The dialog's persisted mid-interaction state (refresh/crash recovery).
+ * Absent members mean the fresh-open default.
+ */
+export interface DirectoryBrowserDraft {
+  /** Directory level the panes listed last (absent = the Host home directory). */
+  path?: string | undefined
+  /** The path editor's live text; null = the editor was closed. */
+  pathDraft?: string | null | undefined
+  /** The footer's show-hidden toggle. */
+  showHidden?: boolean | undefined
+  /** The nested new-folder form's live text; null = the form was closed. */
+  folderDraft?: string | null | undefined
 }
 
 /** Failure text: the Host business message when typed, else the throw's text. */
@@ -259,7 +284,9 @@ function LevelColumn({ entries, selectedPath, busy, onPick, showHidden, filterPr
  * @param props - owner-controlled browser props.
  * @returns the dialog element (null while closed, via Modal).
  */
-export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen, onClose, busy, t }: DirectoryBrowserProps) {
+export function DirectoryBrowser({
+  open, listDirectory, createDirectory, restoreDraft, onDraftChange, onOpen, onClose, busy, t,
+}: DirectoryBrowserProps) {
   // Miller state: the listed level, the selected row in it, and the selected
   // folder's own listing (the right column; null while nothing is selected).
   const [parent, setParent] = useState<DirectoryListing | null>(null)
@@ -305,6 +332,15 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
     openGeneration.current += 1
     scanController.current?.abort()
   }, [])
+  // Draft persistence seams, held through refs so a new owner callback
+  // identity never re-runs the effects that read them.
+  const restoreDraftRef = useRef(restoreDraft)
+  restoreDraftRef.current = restoreDraft
+  const onDraftChangeRef = useRef(onDraftChange)
+  onDraftChangeRef.current = onDraftChange
+  // The restored level the open edge navigated to: bridges the draft's path
+  // between the open and the first listing landing.
+  const seedPathRef = useRef<string | undefined>(undefined)
   const compositionGuard = {
     onCompositionStart: () => { composingRef.current = true },
     onCompositionEnd: () => { composingRef.current = false },
@@ -560,17 +596,24 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
     select(entry)
   }, [child, select])
 
-  // Every open starts fresh at the Host home directory; closing invalidates
+  // Every open starts fresh at the Host home directory — or, when a draft was
+  // persisted, exactly where the last interaction stood: the listed level
+  // reloads, the open editor and its text, the hidden toggle, and an open
+  // new-folder form come back as they were left. Closing invalidates
   // any in-flight response so a late arrival cannot repopulate a closed dialog.
   useEffect(() => {
     openGeneration.current += 1
     if (open) {
+      const restored = restoreDraftRef.current?.()
+      seedPathRef.current = restored?.path
       setParent(null)
       setSelected(null)
       setChild(null)
       setCreatingFolder(false)
-      setShowHidden(false)
-      navigate()
+      setShowHidden(restored?.showHidden === true)
+      setPathDraft(restored?.pathDraft ?? null)
+      setFolderDraft(restored?.folderDraft ?? null)
+      navigate(restored?.path)
       return
     }
     supersede()
@@ -588,6 +631,23 @@ export function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen,
     refocusPick.current = false
     refocusEditZone.current = false
   }, [open, navigate, supersede])
+
+  // Draft write-through: every change to the restorable state reports
+  // outward while the dialog is open. The seed path bridges the window
+  // between the open edge and the first listing landing; a fresh open (no
+  // seed, no level yet) reports no path — the Host home directory is the
+  // default a missing member already means.
+  const levelForDraft = child ?? parent
+  useEffect(() => {
+    if (!open) return
+    const path = levelForDraft?.path ?? seedPathRef.current
+    onDraftChangeRef.current?.({
+      ...(path === undefined ? {} : { path }),
+      pathDraft,
+      showHidden,
+      folderDraft,
+    })
+  }, [open, levelForDraft, pathDraft, showHidden, folderDraft])
 
   /** The folder a create or Open acts on: the selection, else the listed level. */
   const targetPath = selected?.path ?? parent?.path ?? null

@@ -169,3 +169,14 @@ export type WorkspacePickerProps =
   & Omit<WorkspacePickerInjected, 'hooks'>
   & DirectoryPickingHooks
   & PropsLocale<'workspace'>
+
+/**
+ * Full empty-state props: the owner's explicit add-request callback (routed
+ * back into the picker with add intent), the picking occupancy hook (an
+ * unoccupied flow leaves the surface with no add affordance at all), and the
+ * locale seat.
+ */
+export type WorkspaceEmptyStateProps =
+  PropsRuntime<'conversation.hero.workspace.empty'>
+  & DirectoryPickingHooks
+  & PropsLocale<'workspace'>

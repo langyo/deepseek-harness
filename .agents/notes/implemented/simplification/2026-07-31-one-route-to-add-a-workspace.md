@@ -14,14 +14,14 @@ Removing the weaker entry leaves the sidebar header with exactly one action, whi
 
 Adding a Workspace has one route: pick a host directory through the composed directory flow, new or existing. `menu.addWorkspace` ("添加工作区…" / "Add workspace…") is the entry; the create-by-name dialog and its `create.*` / `menu.createWorkspace` / `workspace.new` strings are gone. The label names the outcome, not the mechanism, because it is now the only door to that outcome — a user looking for "新建" must find it.
 
-**A menu exists to disambiguate between targets.** When the only entry left is the add action — the add-only sidebar surface, or the hero with an empty list — the anchor gesture *is* that action: the flow opens directly and no popover renders. A one-row popover costs a click and offers nothing to choose between. The rule is one predicate (`addIsTheOnlyEntry`) covering both surfaces rather than a per-surface special case.
+**A menu exists to disambiguate between targets.** As first shipped, a picker open over an empty settled list consumed the anchor gesture straight into the flow through one predicate (`addIsTheOnlyEntry`) covering both surfaces. That clause is superseded by the [opening-discipline note](../bug-fix/2026-08-28-no-workspace-empty-state-never-auto-opens.md): detecting an empty list never opens the flow — a pick gesture shows the menu with its single add row — and only an explicit add-intent gesture (the confirmed no-workspace empty state's button, the add-only sidebar header) raises the flow directly.
 
 Two boundaries fall out of that rule and are part of it:
 
-- **An empty list is only final once the baseline lands.** While `phase` is `pending` the hero keeps its menu and loading status instead of jumping into a flow that the arriving workspaces would have made unnecessary. The add-only surface lists nothing and never waits.
+- **An empty list is only final once the baseline lands.** While `phase` is `pending` the hero keeps its menu and loading status instead of treating the list as final; the settled-empty handling now lives in the opening-discipline note's empty states. The add-only surface lists nothing and never waits.
 - **An unoccupied directory-flow hole leaves nothing to add with.** The sidebar header then renders no button at all rather than a dead one; the hero's menu keeps working as a picker over whatever is listed, and shows nothing when nothing is listed either — an empty popover would claim a choice that does not exist. This is the seam's documented no-flow default reaching its conclusion: with the occupant gone, so is the only creation affordance. The hero's anchor chip belongs to ui-conversation, so this package can suppress the popover but cannot hide the chip.
 
-The direct-open path carries the busy rule the menu entry states: while a pick is still being adopted (`flowBusy`), the anchor gesture is held exactly as the entry is disabled, so a late outcome cannot race a second flow.
+The direct-open path carries the busy rule the menu entry states: while a pick is still being adopted (`flowBusy`), the add-intent gesture is held exactly as the entry is disabled, so a late outcome cannot race a second flow.
 
 `WorkspaceCreateFlow` is now `WorkspacePickFlow` and its `createOnly` prop is `addOnly`; the injected `createWorkspace` narrows from `{ name } | { path }` to `{ path }`.
 
