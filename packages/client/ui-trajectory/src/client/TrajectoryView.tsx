@@ -516,6 +516,7 @@ export function TrajectoryView({
     setLoadingAll(true)
     void loadThrough(0)
       .then(() => { setHistoryNodeLimit(Number.MAX_SAFE_INTEGER) })
+      .catch(() => { /* the pager gave up: uncap what loaded, clear the flag */ })
       .finally(() => { setLoadingAll(false) })
   }, [hasOlderHistory, loadingAll, loadThrough])
 

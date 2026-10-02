@@ -103,13 +103,20 @@ export function apply(ctx: Context): void {
           /* The jump early-resolves while a plain single-page pull holds the
            * busy flag (session.loadThrough contract): wait for the pull to
            * settle, then retarget. Refused calls are no-ops, so the attempt
-           * bound — not progress — is what ends the loop. */
+           * bound — not progress — is what ends the loop; the settle-wait
+           * itself is also bounded, so a hung pull or a disposed session can
+           * leave neither the loop nor the caller's busy flag stuck. */
           for (let attempt = 0; attempt < 8 && session.getSnapshot().hasMore; attempt++) {
             await session.loadThrough(target)
             if (!session.getSnapshot().hasMore || !session.getSnapshot().loadingOlder) continue
             await new Promise<void>((resolve) => {
+              const timer = setTimeout(() => {
+                unsubscribe()
+                resolve()
+              }, 10_000)
               const unsubscribe = session.subscribe(() => {
                 if (!session.getSnapshot().loadingOlder) {
+                  clearTimeout(timer)
                   unsubscribe()
                   resolve()
                 }

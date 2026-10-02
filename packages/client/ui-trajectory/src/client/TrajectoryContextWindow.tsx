@@ -298,6 +298,15 @@ export function TrajectoryContextWindow({
               {visibleMessages.map(message => (
                 <MessageItem key={message.key} message={message} t={t} />
               ))}
+              {showAllMessages && model.messages.length > MESSAGE_PREVIEW_COUNT && (
+                <button
+                  type="button"
+                  className={css.showAll}
+                  onClick={() => { setShowAllMessages(false) }}
+                >
+                  {t('context.collapse')}
+                </button>
+              )}
             </div>
           )}
       </Section>

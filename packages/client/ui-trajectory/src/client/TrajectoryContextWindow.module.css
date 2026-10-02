@@ -1,4 +1,12 @@
 .root {
+  /* Bucket palette as custom properties: same defaults the hand-picked hex
+   * carried, but overridable per theme — this was the package's only CSS
+   * module with literal hex colors. */
+  --trajectory-bucket-system: #7c6ff7;
+  --trajectory-bucket-tools: #8a94a6;
+  --trajectory-bucket-user: #3fb27f;
+  --trajectory-bucket-assistant: #b58aff;
+  --trajectory-bucket-tool-results: #f2a356;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -64,11 +72,11 @@
   height: 100%;
 }
 
-.compositionSegment[data-bucket='system'] { background: #7c6ff7; }
-.compositionSegment[data-bucket='tools'] { background: #8a94a6; }
-.compositionSegment[data-bucket='user'] { background: #3fb27f; }
-.compositionSegment[data-bucket='assistant'] { background: #b58aff; }
-.compositionSegment[data-bucket='toolResults'] { background: #f2a356; }
+.compositionSegment[data-bucket='system'] { background: var(--trajectory-bucket-system); }
+.compositionSegment[data-bucket='tools'] { background: var(--trajectory-bucket-tools); }
+.compositionSegment[data-bucket='user'] { background: var(--trajectory-bucket-user); }
+.compositionSegment[data-bucket='assistant'] { background: var(--trajectory-bucket-assistant); }
+.compositionSegment[data-bucket='toolResults'] { background: var(--trajectory-bucket-tool-results); }
 
 .compositionLegend {
   display: flex;
@@ -94,11 +102,11 @@
   border-radius: 2px;
 }
 
-.compositionSwatch[data-bucket='system'] { background: #7c6ff7; }
-.compositionSwatch[data-bucket='tools'] { background: #8a94a6; }
-.compositionSwatch[data-bucket='user'] { background: #3fb27f; }
-.compositionSwatch[data-bucket='assistant'] { background: #b58aff; }
-.compositionSwatch[data-bucket='toolResults'] { background: #f2a356; }
+.compositionSwatch[data-bucket='system'] { background: var(--trajectory-bucket-system); }
+.compositionSwatch[data-bucket='tools'] { background: var(--trajectory-bucket-tools); }
+.compositionSwatch[data-bucket='user'] { background: var(--trajectory-bucket-user); }
+.compositionSwatch[data-bucket='assistant'] { background: var(--trajectory-bucket-assistant); }
+.compositionSwatch[data-bucket='toolResults'] { background: var(--trajectory-bucket-tool-results); }
 
 .compositionLegendValue {
   color: var(--dsw-alias-label-tertiary);
@@ -209,18 +217,18 @@
 }
 
 .messageRole[data-role='user'] {
-  background: rgba(63, 178, 127, 0.16);
-  color: #2c9668;
+  background: rgb(var(--trajectory-bucket-user-rgb, 63 178 127) / 16%);
+  color: var(--trajectory-role-user-ink, #2c9668);
 }
 
 .messageRole[data-role='assistant'] {
-  background: rgba(181, 138, 255, 0.18);
-  color: #8f5fe0;
+  background: rgb(var(--trajectory-bucket-assistant-rgb, 181 138 255) / 18%);
+  color: var(--trajectory-role-assistant-ink, #8f5fe0);
 }
 
 .messageRole[data-role='tool'] {
-  background: rgba(242, 163, 86, 0.18);
-  color: #c67a1f;
+  background: rgb(var(--trajectory-bucket-tool-results-rgb, 242 163 86) / 18%);
+  color: var(--trajectory-role-tool-ink, #c67a1f);
 }
 
 .messageSeq {
@@ -239,7 +247,7 @@
 }
 
 .messageTool {
-  color: #c67a1f;
+  color: var(--trajectory-role-tool-ink, #c67a1f);
   font-family: var(--ds-font-family-code, monospace);
 }
 
