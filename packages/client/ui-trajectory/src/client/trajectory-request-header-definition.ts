@@ -3,7 +3,9 @@ import type {
   ConversationNodeDefinition, RequestPromptInspector, SystemPromptState, SystemPromptInspector,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { trajectoryNode } from './trajectory-definition-common.ts'
-import type { TrajectoryRequestHeaderState } from './trajectory-contract.ts'
+import type {
+  TrajectoryConversationViewNode, TrajectoryRequestHeaderState,
+} from './trajectory-contract.ts'
 
 /** Loaded system surface plus the latest request facts changed by an append or compaction. */
 export interface TrajectorySystemMessageState extends SystemPromptState {
@@ -80,10 +82,21 @@ function trajectorySystemMessageDefinition(inspect: SystemPromptInspector): Conv
         return trajectoryNode(context, state.header.seq, { kind: 'request-header', header: state.header })
       }
       const prompt = state?.introduced
-      return prompt !== undefined && prompt.text !== ''
-        && context.start?.event.type === 'system/message' && context.start.event.surfaceOp === 'append'
-        ? trajectoryNode(context, prompt.seq, { kind: 'system-prompt', prompt })
-        : null
+      if (prompt !== undefined && prompt.text !== ''
+        && context.start?.event.type === 'system/message' && context.start.event.surfaceOp === 'append') {
+        return trajectoryNode(context, prompt.seq, { kind: 'system-prompt', prompt })
+      }
+      /* Prepend replays recompute `previous`-dependent state: a Context that
+       * materialized a card from a window starting at its own event can lose
+       * it once the earlier system message pages in. The Engine rejects
+       * withdrawals, so the card degrades to a hidden echo of its own last
+       * materialization — prompt card or request-header card alike; dropping
+       * the header row is the deliberate trade against the Engine's throw. */
+      const current = context.current.get('trajectory') as
+        TrajectoryConversationViewNode | null | undefined
+      return current === null || current === undefined
+        ? null
+        : trajectoryNode(context, current.anchorSeq, current.data, { visibility: 'hidden' })
     },
   }
 }

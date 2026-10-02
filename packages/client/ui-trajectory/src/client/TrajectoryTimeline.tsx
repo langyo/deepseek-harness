@@ -140,6 +140,12 @@ export interface TrajectoryTimelineProps {
   hasEarlierRecords?: boolean
   /** Load one earlier history page from the truncation control. */
   onLoadEarlier?: () => Promise<boolean>
+  /** Whether any loaded record sits on the input lane (system/user/context). */
+  hasInputRecords?: boolean
+  /** Whether the load-all jump is currently paging. */
+  loadingAll?: boolean
+  /** Page all earlier history in one go (drives the empty-input-lane hint). */
+  onLoadAll?: () => void
   selectedIndex?: number | null
   /** Record indexes matching the active ledger search, or null without a query. */
   searchMatchIndexes?: ReadonlySet<number> | null
@@ -245,6 +251,9 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
   range,
   hasEarlierRecords = false,
   onLoadEarlier,
+  hasInputRecords = true,
+  loadingAll = false,
+  onLoadAll,
   selectedIndex = null,
   searchMatchIndexes = null,
   onRangeChange,
@@ -615,6 +624,22 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
               onLoad={loadEarlier}
               t={t}
             />
+          )}
+          {hasEarlierRecords && !hasInputRecords && onLoadAll !== undefined && (
+            <button
+              type="button"
+              className={css.inputLaneHint}
+              data-timeline-input-hint
+              disabled={loadingAll}
+              title={t('timeline.inputInEarlier')}
+              onClick={(event) => {
+                event.stopPropagation()
+                onLoadAll()
+              }}
+              onPointerDown={(event) => { event.stopPropagation() }}
+            >
+              {loadingAll ? t('history.loadingAll') : t('timeline.inputInEarlier')}
+            </button>
           )}
           {hover !== null && hover.recordIndex === null && draft === null && (
             <div

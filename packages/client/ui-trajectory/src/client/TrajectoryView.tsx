@@ -78,6 +78,8 @@ export interface TrajectoryViewInjected {
     duration: SnapshotStore<boolean>
   }
   loadOlder: () => Promise<boolean>
+  /** Jump-loader: page backwards until the window covers the given seq (0 = all). */
+  loadThrough: (seq: number) => Promise<void>
   loadImage: MessageImageLoader
   setActualDuration: (actualDuration: boolean) => void
 }
@@ -127,7 +129,7 @@ function addUsage(
 }
 
 export function TrajectoryView({
-  useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration,
+  useSession, useTrajectory, useDuration, loadOlder, loadThrough, loadImage, setActualDuration,
   viewRequest, completeViewRequest, renderSlot, t,
 }: ConvViewProps
   & PropsRenderSlots<'conversation.trajectory.images'>
@@ -504,6 +506,27 @@ export function TrajectoryView({
     return true
   }, [hasResidentOlderHistory, loadOlder])
 
+  /* Load-all: the jump loader pages backwards (200-message hops) until the
+   * resident window reaches the log start; only then does the display-window
+   * limit open up. (Memos still re-fold per prepended page; the limit merely
+   * pins how much of the resident set the ledger renders.) */
+  const [loadingAll, setLoadingAll] = useState(false)
+  const loadAllEarlierHistory = useCallback(() => {
+    if (loadingAll || !hasOlderHistory) return
+    setLoadingAll(true)
+    void loadThrough(0)
+      .then(() => { setHistoryNodeLimit(Number.MAX_SAFE_INTEGER) })
+      .finally(() => { setLoadingAll(false) })
+  }, [hasOlderHistory, loadingAll, loadThrough])
+
+  const hasInputRecords = useMemo(
+    () => timelineTurns.some(turn =>
+      turn.groups.some(group =>
+        group.cells.some(cell =>
+          cell.kind === 'system' || cell.kind === 'user' || cell.kind === 'context'))),
+    [timelineTurns],
+  )
+
   return (
     <div className={css.root} data-conversation-composer-overlay="">
       <TrajectoryToolbar
@@ -523,6 +546,10 @@ export function TrajectoryView({
         onToggleAllAssistants={toggleAllAssistants}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
+        hasOlderHistory={hasOlderHistory}
+        loadingAll={loadingAll}
+        historyStartSeq={completeInspection.eventNodes[0]?.seq ?? 0}
+        onLoadAll={loadAllEarlierHistory}
         t={t}
       />
       <TrajectoryTimeline
@@ -532,6 +559,9 @@ export function TrajectoryView({
         range={timelineRange}
         hasEarlierRecords={hasOlderHistory}
         onLoadEarlier={loadEarlierHistory}
+        hasInputRecords={hasInputRecords}
+        loadingAll={loadingAll}
+        onLoadAll={loadAllEarlierHistory}
         selectedIndex={selectedTimelineIndex}
         searchMatchIndexes={searchMatchIndexes}
         onRangeChange={handleTimelineRangeChange}
@@ -543,6 +573,7 @@ export function TrajectoryView({
           t={t}
           renderImages={renderImages}
           requestNumbers={requestNumbers}
+          contextSnapshot={completeInspection}
           turns={timelineTurns}
           streamingCells={streamingCells}
           timelineFocusIndexes={timelineFocusIndexes}
@@ -556,6 +587,9 @@ export function TrajectoryView({
           historyStartSeq={historyBaseSeq}
           hasOlderRecords={hasOlderHistory}
           onLoadOlder={loadEarlierHistory}
+          loadingAll={loadingAll}
+          onLoadAll={loadAllEarlierHistory}
+          contextTruncated={sessionHasOlderHistory}
           onClearSelection={() => { setTimelineSelection(null) }}
           collapsedTurns={collapsedTurns}
           onToggleTurn={toggleTurn}

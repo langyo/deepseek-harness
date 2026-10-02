@@ -28,6 +28,7 @@ function contribution(
   return {
     key, kind: key, id: key, target: 'trajectory', anchorSeq,
     location: { kind: 'session' },
+    visibility: 'visible',
     data,
   }
 }
@@ -80,6 +81,7 @@ describe('TrajectorySnapshotBuilder', () => {
         target: 'trajectory',
         anchorSeq: 2,
         location: { kind: 'session' },
+        visibility: 'visible' as const,
         data: {
           kind: 'request-header',
           header: {
@@ -98,6 +100,7 @@ describe('TrajectorySnapshotBuilder', () => {
         target: 'trajectory' as const,
         anchorSeq: request.startSeq,
         location: { kind: 'session' as const },
+        visibility: 'visible' as const,
         data: { kind: 'assistant' as const, partial: null, request },
       })),
     ]
@@ -297,5 +300,29 @@ describe('TrajectorySnapshotBuilder', () => {
     })
     expect(builder.apply({ upserts: [middle] }).requests.map(request => request.startSeq))
       .toEqual([1, 3, 5])
+  })
+
+  it('drops hidden contributions on replace and on visibility-changing apply', () => {
+    const builder = new TrajectorySnapshotBuilder()
+    const visiblePrompt = contribution('system', 1, {
+      kind: 'system-prompt',
+      prompt: { seq: 1, time: 1, turn: 1, step: 1, text: 'prompt', update: false },
+    })
+    const step = contribution('assistant:1', 3, {
+      kind: 'assistant', partial: null, request: assistantRequest(3, 1),
+    })
+    expect(builder.replace({ nodes: [visiblePrompt, step] }).systemPrompts).toHaveLength(1)
+
+    // The prepend replay degrades the prompt card to a hidden echo of itself.
+    const hiddenEcho: TrajectoryConversationViewNode = { ...visiblePrompt, visibility: 'hidden' }
+    const afterHide = builder.apply({ upserts: [hiddenEcho] })
+    expect(afterHide.systemPrompts ?? []).toHaveLength(0)
+    expect(afterHide.requests.map(request => request.startSeq)).toEqual([3])
+
+    // A later replay can legitimately restore the card (visibility flip back).
+    expect(builder.apply({ upserts: [visiblePrompt] }).systemPrompts ?? []).toHaveLength(1)
+
+    // Hidden nodes never enter the snapshot through a wholesale replace either.
+    expect(builder.replace({ nodes: [hiddenEcho, step] }).systemPrompts ?? []).toHaveLength(0)
   })
 })

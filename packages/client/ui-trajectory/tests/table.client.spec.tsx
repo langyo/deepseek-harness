@@ -8,6 +8,7 @@ import type { RenderMessageImages } from '@deepseek-ai/dsh-client-ui-conversatio
 import { TrajectoryTable as LocalizedTrajectoryTable } from '../src/client/TrajectoryTable.tsx'
 import { deriveTrajectoryLayout, type TrajectoryTurnModel } from '../src/client/layout.ts'
 import { trajectoryRecordId } from '../src/client/trajectory-record.ts'
+import type { TrajectorySnapshot } from '../src/client/trajectory-contract.ts'
 import { t, tZh } from './locale.client.ts'
 
 const renderImagesStub: RenderMessageImages = ({ images }) => (
@@ -1145,5 +1146,44 @@ describe('TrajectoryTable', () => {
 
     expect(screen.getByRole('row', { name: /TOOL/ }).getAttribute('aria-selected')).toBe('false')
     expect(onInspectApplied).not.toHaveBeenCalled()
+  })
+
+  it('gates the context truncation notice on the session pager, not the window', () => {
+    const contextSnapshot: TrajectorySnapshot = {
+      eventNodes: [
+        { kind: 'user', seq: 1, time: 1, content: [{ type: 'text', text: 'hello' }], source: undefined },
+      ],
+      eventLocations: new Map(),
+      requests: [{
+        purpose: 'assistant', startSeq: 5, turn: 1, step: 1,
+        startedAt: 5, completedAt: 6, status: 'complete',
+      }],
+      callSchemas: new Map(),
+      partial: null,
+      runningCalls: [],
+    }
+    const { rerender } = render(
+      <TrajectoryTable
+        turns={TURNS}
+        contextSnapshot={contextSnapshot}
+        contextTruncated
+        {...FOLD_PROPS}
+      />,
+    )
+    fireEvent.click(screen.getByRole('row', { name: /ASSISTANT/ }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Context' }))
+    expect(document.querySelector('[data-testid="context-window"]')).not.toBeNull()
+    expect(document.querySelector('[data-notice="truncated"]')).not.toBeNull()
+
+    rerender(
+      <TrajectoryTable
+        turns={TURNS}
+        contextSnapshot={contextSnapshot}
+        contextTruncated={false}
+        {...FOLD_PROPS}
+      />,
+    )
+    expect(document.querySelector('[data-testid="context-window"]')).not.toBeNull()
+    expect(document.querySelector('[data-notice="truncated"]')).toBeNull()
   })
 })

@@ -29,6 +29,11 @@ import type { TrajectoryVirtualRow } from './trajectory-virtual-rows.ts'
 import type { TrajectoryTurnModel } from './layout.ts'
 import { trajectoryPreviewText } from './trajectory-preview.ts'
 import type { TrajectoryKey, TrajectoryTranslate } from './locales.ts'
+import type { TrajectorySnapshot } from './trajectory-contract.ts'
+import {
+  deriveContextWindow, type ContextWindowTarget,
+} from './trajectory-context-window.ts'
+import { TrajectoryContextWindow } from './TrajectoryContextWindow.tsx'
 import { COMPACTION_INTERRUPTED_ERROR } from './copy-codes.ts'
 import css from './TrajectoryTable.module.css'
 
@@ -170,6 +175,7 @@ type DetailTab =
   | 'usage'
   | 'timing'
   | 'diff'
+  | 'context'
 type RecordState = 'complete' | 'running' | 'error'
 
 interface DetailTabItem {
@@ -218,6 +224,7 @@ const SYSTEM_UPDATE_TABS: readonly DetailTabItem[] = [
 ]
 const REQUEST_TABS: readonly DetailTabItem[] = [
   { id: 'overview', labelKey: 'tab.summary' },
+  { id: 'context', labelKey: 'tab.context' },
   { id: 'options', labelKey: 'tab.options' },
   { id: 'usage', labelKey: 'tab.usage' },
   { id: 'timing', labelKey: 'tab.timing' },
@@ -408,6 +415,14 @@ export interface TrajectoryTableProps {
   hasOlderRecords?: boolean
   /** Load one older history page. */
   onLoadOlder?: () => Promise<boolean>
+  /** Whether the load-all jump is currently paging. */
+  loadingAll?: boolean
+  /** Page all earlier history in one go. */
+  onLoadAll?: () => void
+  /** Complete resident trajectory snapshot backing context-window rebuilds. */
+  contextSnapshot?: TrajectorySnapshot
+  /** Pager-level truncation: the session still owns older unloaded events. */
+  contextTruncated?: boolean
   /** Clear selection state owned by the ledger host. */
   onClearSelection?: () => void
   /** Turn ids whose rows after the first are folded into a summary. */
@@ -975,6 +990,9 @@ function detailTabs(record: TableRecord): readonly DetailTabItem[] {
       ...(record.cell.messageSource === undefined
         ? []
         : [{ id: 'source', labelKey: 'tab.source' } as const]),
+      ...(record.cell.kind === 'message'
+        ? [{ id: 'context', labelKey: 'tab.context' } as const]
+        : []),
     ]
   }
   return [
@@ -1817,6 +1835,10 @@ export function TrajectoryTable({
   historyStartSeq,
   hasOlderRecords = false,
   onLoadOlder,
+  loadingAll = false,
+  onLoadAll,
+  contextSnapshot,
+  contextTruncated = false,
   onClearSelection,
   collapsedTurns,
   onToggleTurn,
@@ -2053,6 +2075,28 @@ export function TrajectoryTable({
   const hasSelectedHierarchy = selectedAssistantRequestTarget !== undefined
     || selectedParents.message !== undefined
     || selectedParents.tool !== undefined
+
+  /* Context-window rebuild: request-group selections resolve directly, and an
+   * assistant record resolves to its owning request; both feed the 上下文 tab. */
+  const contextSubject = selectedRequestInfo ?? selectedAssistantRequestInfo
+  const contextTargetKey = contextSubject === undefined
+    ? null
+    : contextSubject.purpose === 'compaction'
+      ? `compaction:${contextSubject.seq}`
+      : `assistant:${contextSubject.turn}:${contextSubject.step}`
+  const contextModel = useMemo(() => {
+    if (contextSnapshot === undefined || contextTargetKey === null) return null
+    const [purpose, first, second] = contextTargetKey.split(':')
+    const target: ContextWindowTarget = purpose === 'compaction'
+      ? { cutoffSeq: Number(first) }
+      : { turn: Number(first), step: Number(second) }
+    return {
+      ...deriveContextWindow(contextSnapshot, target),
+      // The session pager, not the display window, knows whether the fold
+      // (over the complete resident snapshot) misses earlier events.
+      truncatedPrefix: contextTruncated,
+    }
+  }, [contextSnapshot, contextTargetKey, contextTruncated])
   const splitStyle: TrajectorySplitStyle | undefined = toolRequestOffset === null
     ? undefined
     : {
@@ -2950,6 +2994,20 @@ export function TrajectoryTable({
                 request={selectedRequestInfo}
                 t={t}
               />
+            )}
+            {activeTab === 'context' && (
+              contextModel === null
+                ? <p className={css.noPayload}>{t('context.empty')}</p>
+                : (
+                  <TrajectoryContextWindow
+                    model={contextModel}
+                    jsonLabels={jsonTreeLabels(t)}
+                    hasOlderRecords={hasOlderRecords}
+                    loadingAll={loadingAll}
+                    onLoadAll={onLoadAll}
+                    t={t}
+                  />
+                )
             )}
             {selectedPrompt !== undefined
               && selectedPreviousPrompt !== undefined

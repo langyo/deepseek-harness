@@ -57,6 +57,12 @@ export interface TrajectoryConversationViewNode extends ConversationViewNode {
   readonly target: 'trajectory'
   readonly anchorSeq: number
   readonly location: ConversationLocation
+  /**
+   * Materialization state. A Definition may never withdraw a Node it already
+   * materialized (the Engine throws on null-after-node); on prepend replays it
+   * returns the same key `hidden` instead, and the snapshot builder drops it.
+   */
+  readonly visibility: 'visible' | 'hidden'
   readonly data: TrajectoryContribution
 }
 

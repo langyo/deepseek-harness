@@ -96,6 +96,27 @@ export function apply(ctx: Context): void {
           await session.loadOlder()
           return trajectory.getSnapshot() !== before
         },
+        loadThrough: async (seq) => {
+          /* SessionSeq is a type-only concern here: the wire face takes the
+           * number and the pager brands it itself. */
+          const target = seq as Parameters<typeof session.loadThrough>[0]
+          /* The jump early-resolves while a plain single-page pull holds the
+           * busy flag (session.loadThrough contract): wait for the pull to
+           * settle, then retarget. Refused calls are no-ops, so the attempt
+           * bound — not progress — is what ends the loop. */
+          for (let attempt = 0; attempt < 8 && session.getSnapshot().hasMore; attempt++) {
+            await session.loadThrough(target)
+            if (!session.getSnapshot().hasMore || !session.getSnapshot().loadingOlder) continue
+            await new Promise<void>((resolve) => {
+              const unsubscribe = session.subscribe(() => {
+                if (!session.getSnapshot().loadingOlder) {
+                  unsubscribe()
+                  resolve()
+                }
+              })
+            })
+          }
+        },
         loadImage: Object.assign(
           (attachment: ImageAttachmentRef) => ctx.uiConversation.imageUrl(sessionId, attachment),
           { peek: (attachment: ImageAttachmentRef) => ctx.uiConversation.peekImageUrl(sessionId, attachment) },

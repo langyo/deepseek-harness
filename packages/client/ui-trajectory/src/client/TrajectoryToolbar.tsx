@@ -26,6 +26,14 @@ export interface TrajectoryToolbarProps {
   searchQuery: string
   /** Update the live ledger search query. */
   onSearchQueryChange: (query: string) => void
+  /** Whether earlier unloaded history exists. */
+  hasOlderHistory?: boolean
+  /** Whether the load-all jump is currently paging; the label shows progress. */
+  loadingAll?: boolean
+  /** Resident window's first seq while the load-all jump runs. */
+  historyStartSeq?: number
+  /** Page all earlier history in one go. */
+  onLoadAll?: () => void
   /** Translate a toolbar dictionary key. */
   t: TranslateNS<typeof NS>
 }
@@ -46,6 +54,10 @@ export function TrajectoryToolbar({
   onToggleAllAssistants,
   searchQuery,
   onSearchQueryChange,
+  hasOlderHistory = false,
+  loadingAll = false,
+  historyStartSeq = 0,
+  onLoadAll,
   t,
 }: TrajectoryToolbarProps) {
   return (
@@ -112,6 +124,25 @@ export function TrajectoryToolbar({
           </button>
         </div>
         <div className={css.search}>
+          {hasOlderHistory && onLoadAll !== undefined && (
+            <button
+              type="button"
+              className={css.action}
+              data-loading-all={loadingAll || undefined}
+              aria-label={loadingAll ? t('history.loadingAll') : t('history.loadAllAria')}
+              aria-busy={loadingAll || undefined}
+              title={loadingAll
+                ? t('history.loadingAllProgress', { seq: historyStartSeq })
+                : t('history.loadAll')}
+              disabled={loadingAll}
+              onClick={onLoadAll}
+            >
+              <span className={css.actionIcon} aria-hidden="true">
+                {loadingAll ? '…' : '⇤'}
+              </span>
+              {loadingAll ? t('history.loadingAll') : t('history.loadAll')}
+            </button>
+          )}
           <IconSearchOutline16 size={11} className={css.searchIcon} />
           <input
             type="search"

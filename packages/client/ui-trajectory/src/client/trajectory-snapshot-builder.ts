@@ -173,10 +173,14 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
     for (const node of input.upserts) {
       const previous = this.nodes.get(node.key)
       this.nodes.set(node.key, node)
-      if (previous === undefined || previous.anchorSeq !== node.anchorSeq) {
+      // Visibility transitions change membership, not content: rebuild so the
+      // hidden node leaves (or re-enters) the contribution list atomically.
+      if (previous === undefined || previous.anchorSeq !== node.anchorSeq
+        || previous.visibility !== node.visibility) {
         structural = true
         continue
       }
+      if (node.visibility === 'hidden') continue
       const position = this.positions.get(node.key)
       if (position === undefined) structural = true
       else this.contributions[position] = node
@@ -292,6 +296,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
 
   private rebuildContributions(): void {
     this.contributions = [...this.nodes.values()]
+      .filter(node => node.visibility !== 'hidden')
       .sort((left, right) => left.anchorSeq - right.anchorSeq || left.key.localeCompare(right.key))
     this.positions.clear()
     for (const [index, contribution] of this.contributions.entries()) {

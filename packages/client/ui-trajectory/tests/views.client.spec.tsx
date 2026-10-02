@@ -149,7 +149,7 @@ function standaloneHistory(
   snapshot: TrajectorySnapshot,
 ): Pick<
   ComponentProps<typeof TrajectoryView>,
-  'useSession' | 'useTrajectory' | 'loadOlder'
+  'useSession' | 'useTrajectory' | 'loadOlder' | 'loadThrough'
 > {
   const session = createSnapshotStore(sessionSnapshot(snapshot.eventNodes))
   const trajectory = createSnapshotStore(snapshot)
@@ -157,6 +157,7 @@ function standaloneHistory(
     useSession: bindSnapshotSelector(session),
     useTrajectory: bindSnapshotSelector(trajectory),
     loadOlder: () => Promise.resolve(false),
+    loadThrough: () => Promise.resolve(),
   }
 }
 
@@ -203,7 +204,7 @@ const useProjection: UseProjection = emptyProjection
 
 type StandaloneBaseProps = Omit<
   ComponentProps<typeof TrajectoryView>,
-  'useSession' | 'useTrajectory' | 'useDuration' | 'loadOlder' | 'setActualDuration'
+  'useSession' | 'useTrajectory' | 'useDuration' | 'loadOlder' | 'loadThrough' | 'setActualDuration'
 >
 
 /** Standalone view props: the session-scope standard kit the outlet would bake. */
@@ -258,10 +259,11 @@ async function bench(snapshot = historySnapshot(NODES)) {
   const ctx = runtime.ctx
   const slots = runtime.slots
   const loadOlder = vi.fn(() => Promise.resolve())
+  const loadThrough = vi.fn(() => Promise.resolve())
   await runtime.sessions.add({
     id: SID,
     snapshot: { blank: false },
-    session: { loadOlder },
+    session: { loadOlder, loadThrough },
   })
   const trajectoryStore = createSnapshotStore(snapshot)
   const conversationStore = createSnapshotStore<ConversationSnapshot>(conversationSnapshot(snapshot))
